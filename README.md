@@ -106,6 +106,36 @@ Se preferir usar o build compilado:
 npm start
 ```
 
+### Usando o MCP Inspector (interface web)
+
+Para interagir com o servidor via interface web sem precisar de uma IDE compatível:
+
+```powershell
+# Desenvolvimento (ts-node)
+npm run dev:inspector
+
+# Produção (build compilado)
+npm run start:inspector
+```
+
+Após executar, acesse o link gerado no terminal (geralmente `http://localhost:5173` ou `http://localhost:6274`) para abrir o MCP Inspector.
+
+## Regras customizadas por projeto (.archrc.json)
+
+Crie um arquivo `.archrc.json` na raiz do projeto que será analisado com um array `"rules"` para aplicar regras arquiteturais específicas do seu time. O servidor MCP carrega essas regras automaticamente e as inclui na análise.
+
+```json
+{
+  "rules": [
+    "Controllers não devem acessar o banco de dados diretamente. Use Repositories ou Services.",
+    "O código deve priorizar a Injeção de Dependência via construtor.",
+    "Mantenha classes focadas em uma única responsabilidade (SRP)."
+  ]
+}
+```
+
+Se o arquivo não existir, a análise prossegue normalmente sem regras customizadas.
+
 ## Como usar a ferramenta MCP
 
 A ferramenta exposta é `check_my_architecture`.
@@ -210,6 +240,6 @@ O fluxo completo foi validado localmente com Playwright: o backend recebeu o POS
 
 ## Próximos passos
 
-1. Conectar o servidor MCP ao VS Code como servidor local.
-2. Testar a ferramenta `check_my_architecture` com arquivos reais do seu projeto.
-3. Ajustar o prompt do backend se você quiser uma abordagem mais rígida em relação a SOLID ou mais orientada a patterns.
+1. Testar a ferramenta `check_my_architecture` com arquivos reais do seu projeto via MCP Inspector ou IDE compatível.
+2. Criar um `.archrc.json` na raiz do projeto com as regras arquiteturais do seu time.
+3. Implementar a etapa de análise no workflow `.github/workflows/architecture-analysis.yml` para postar feedback arquitetural diretamente nos Pull Requests.

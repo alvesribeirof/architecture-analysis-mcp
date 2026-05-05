@@ -22,12 +22,10 @@ O servidor MCP atua como a ponte entre IDEs/Clientes MCP e o motor de análise n
   - Encaminha o payload (código-fonte, caminho do arquivo, modelo LLM e contexto) para o Backend ASP.NET Core.
 
 ### Variáveis de Ambiente
-- `MCP_SERVER_PORT`: Porta onde o servidor vai rodar (Padrão: 3000)
 - `BACKEND_URL`: URL do backend ASP.NET (Padrão: `http://localhost:5000`)
 - `BACKEND_ENDPOINT`: Endpoint da API (Padrão: `/api/architecture/analyze`)
 - `DEFAULT_LLM_MODEL`: Modelo padrão do OpenRouter quando `llm_model` não é informado na chamada (Padrão: `openai/gpt-4o-mini`)
 - `DEBUG`: Quando `true`, habilita logs detalhados via `stderr` (Padrão: `false`)
-- `OPENROUTER_API_KEY`: Chave da API para o provedor OpenRouter.
 
 ### Novas Funcionalidades (Super-Poderes)
 
@@ -64,6 +62,8 @@ O backend é responsável por receber o payload e se comunicar diretamente com a
 
 ---
 
+## 3. Fluxo de Comunicação
+
 ```mermaid
 sequenceDiagram
     participant Client as Cliente MCP (IDE)
@@ -80,7 +80,25 @@ sequenceDiagram
     MCP-->>Client: Resultado da Ferramenta
 ```
 
-## 4. Payloads (Formato de Dados)
+## 4. Regras Customizadas (.archrc.json)
+
+Se houver um arquivo `.archrc.json` na raiz do projeto com um array `"rules"`, o servidor MCP o lê automaticamente e inclui as regras na requisição ao backend. Isso permite que cada time defina padrões arquiteturais próprios sem alterar o código do servidor.
+
+Exemplo:
+```json
+{
+  "rules": [
+    "Controllers não devem acessar o banco de dados diretamente. Use Repositories ou Services.",
+    "O código deve priorizar a Injeção de Dependência via construtor.",
+    "Utilize a Clean Architecture sempre que possível.",
+    "Mantenha classes focadas em uma única responsabilidade (SRP)."
+  ]
+}
+```
+
+---
+
+## 5. Payloads (Formato de Dados)
 
 ### Requisição para o Backend
 
@@ -114,11 +132,13 @@ sequenceDiagram
 }
 ```
 
-## 5. Integração com CI/CD (GitHub Actions)
+## 6. Integração com CI/CD (GitHub Actions)
 
-A aplicação foi desenhada para ser executada diretamente em pipelines (Pull Requests). Existe um exemplo completo em `.github/workflows/architecture-analysis.yml`. Nele, você pode iniciar o Backend em background e utilizar scripts via `axios` ou chamadas `curl` na mesma pipeline para verificar as alterações, postando comentários arquiteturais direto no PR da equipe!
+Existe um template em `.github/workflows/architecture-analysis.yml` que roda em Pull Requests com alterações em arquivos `.cs` ou `.ts`. O template inicializa o backend e reserva um passo `Run MCP Analysis Script` ainda não implementado — o objetivo é que esse passo chame o endpoint `/api/architecture/analyze` para os arquivos alterados e, via `github-script`, poste o resultado como comentário no PR.
 
-## 5. Interface Padrão (MCP Inspector)
+Para torná-lo funcional, adicione o secret `OPENROUTER_API_KEY` nas configurações do repositório e implemente o script de chamada à API.
+
+## 7. Interface Padrão (MCP Inspector)
 
 O sistema está configurado para usar o **MCP Inspector** como a interface web padrão para interagir com a aplicação, tanto no ambiente de desenvolvimento local quanto em produção. 
 
