@@ -30,6 +30,25 @@ public sealed class OpenRouterArchitectureAnalysisService(
         var systemPrompt = BuildSystemPrompt();
         var userPrompt = BuildUserPrompt(request);
 
+        var schemaProperties = new Dictionary<string, object>
+        {
+            ["analysis"] = new { type = "string" },
+            ["violations"] = new { type = "array", items = new { type = "string" } },
+            ["suggestions"] = new { type = "array", items = new { type = "string" } },
+            ["patterns"] = new { type = "array", items = new { type = "string" } },
+            ["confidence"] = new { type = "number" }
+        };
+
+        var requiredFields = new List<string> { "analysis", "violations", "suggestions", "patterns", "confidence" };
+
+        if (request.GenerateRefactoring)
+        {
+            schemaProperties["refactoredCode"] = new { type = "string" };
+            schemaProperties["architectureDiagram"] = new { type = "string" };
+            requiredFields.Add("refactoredCode");
+            requiredFields.Add("architectureDiagram");
+        }
+
         var openRouterPayload = new
         {
             model = request.LlmModel,
@@ -39,7 +58,7 @@ public sealed class OpenRouterArchitectureAnalysisService(
                 new { role = "user", content = userPrompt }
             },
             temperature = 0.2,
-            max_tokens = 1400,
+            max_tokens = 2500, // Increased tokens for code/diagrams
             response_format = new
             {
                 type = "json_schema",
@@ -51,27 +70,8 @@ public sealed class OpenRouterArchitectureAnalysisService(
                     {
                         type = "object",
                         additionalProperties = false,
-                        properties = new
-                        {
-                            analysis = new { type = "string" },
-                            violations = new
-                            {
-                                type = "array",
-                                items = new { type = "string" }
-                            },
-                            suggestions = new
-                            {
-                                type = "array",
-                                items = new { type = "string" }
-                            },
-                            patterns = new
-                            {
-                                type = "array",
-                                items = new { type = "string" }
-                            },
-                            confidence = new { type = "number" }
-                        },
-                        required = new[] { "analysis", "violations", "suggestions", "patterns", "confidence" }
+                        properties = schemaProperties,
+                        required = requiredFields
                     }
                 }
             }
@@ -119,30 +119,33 @@ Analise o código focando em:
 2) Cheiros de projeto (acoplamento alto, baixa coesão, classes utilitárias inchadas)
 3) Sugestões de Design Patterns aplicáveis com justificativa objetiva
 4) Feedback acionável e imediato para o desenvolvedor
+5) Geração de Diagramas Mermaid (se solicitado)
+6) Refatoração do Código (se solicitado)
 
-Responda EXCLUSIVAMENTE em JSON válido seguindo este contrato:
-{
-  "analysis": "string",
-  "violations": ["string"],
-  "suggestions": ["string"],
-  "patterns": ["string"],
-  "confidence": 0.0
-}
+Responda EXCLUSIVAMENTE no formato JSON válido.
+Se for solicitado para gerar refatoração, preencha os campos `refactoredCode` com o novo código e `architectureDiagram` com o diagrama Mermaid da nova arquitetura usando sintaxe ```mermaid ... ```.
 
 Regras:
-- Não inclua markdown.
-- Não inclua texto fora do JSON.
-- Seja pragmático e conciso.
+- Não inclua markdown fora das strings do JSON.
+- O JSON deve ser validado estritamente.
 - Confidence deve variar entre 0 e 1.
 """;
     }
 
     private static string BuildUserPrompt(ArchitectureAnalysisRequest request)
     {
+        var rulesText = request.CustomRules != null && request.CustomRules.Any() 
+            ? $"\nRegras customizadas do time (MANDATÓRIO SEGUIR):\n- {string.Join("\n- ", request.CustomRules)}" 
+            : "";
+
+        var refactoringText = request.GenerateRefactoring 
+            ? "\n[IMPORTANTE] Gere a refatoração do código no campo 'refactoredCode' e um diagrama de classes Mermaid refletindo a refatoração no campo 'architectureDiagram'."
+            : "";
+
         return $"""
 Arquivo: {request.FilePath}
 Modelo solicitado: {request.LlmModel}
-Contexto adicional: {request.AdditionalContext ?? "(não informado)"}
+Contexto adicional: {request.AdditionalContext ?? "(não informado)"}{rulesText}{refactoringText}
 
 Código-fonte:
 {request.SourceCode}
@@ -181,6 +184,8 @@ internal static class ArchitectureAnalysisResponseExtensions
             Suggestions = input.Suggestions,
             Patterns = input.Patterns,
             Confidence = input.Confidence,
+            RefactoredCode = input.RefactoredCode,
+            ArchitectureDiagram = input.ArchitectureDiagram,
             Metadata = metadata
         };
     }

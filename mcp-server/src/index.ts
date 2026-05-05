@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import axios from "axios";
 import { z } from "zod";
@@ -13,6 +14,8 @@ interface ArchitectureAnalysisRequest {
   filePath: string;
   llmModel: string;
   additionalContext?: string;
+  customRules?: string[];
+  generateRefactoring?: boolean;
 }
 
 interface ArchitectureAnalysisResponse {
@@ -21,6 +24,8 @@ interface ArchitectureAnalysisResponse {
   suggestions: string[];
   patterns: string[];
   confidence: number;
+  refactoredCode?: string;
+  architectureDiagram?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -57,6 +62,23 @@ async function readFileContent(filePath: string): Promise<string> {
     ? filePath
     : path.resolve(process.cwd(), filePath);
   return readFile(absolutePath, "utf-8");
+}
+
+async function getCustomRules(): Promise<string[] | undefined> {
+  try {
+    const archrcPath = path.resolve(process.cwd(), ".archrc.json");
+    if (existsSync(archrcPath)) {
+      const content = await readFile(archrcPath, "utf-8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed.rules)) {
+        log("Loaded custom rules from .archrc.json");
+        return parsed.rules;
+      }
+    }
+  } catch (err) {
+    log("Failed to parse .archrc.json", err);
+  }
+  return undefined;
 }
 
 async function analyzeArchitecture(
@@ -114,6 +136,17 @@ function formatAnalysisResponse(
     lines.push("");
   }
 
+  if (analysis.architectureDiagram) {
+    lines.push("Architecture Diagram:");
+    lines.push(analysis.architectureDiagram);
+    lines.push("");
+  }
+
+  if (analysis.refactoredCode) {
+    lines.push("Refactored Code Generated.");
+    lines.push("");
+  }
+
   if (analysis.metadata) {
     lines.push("Metadata:");
     lines.push(JSON.stringify(analysis.metadata, null, 2));
@@ -152,6 +185,10 @@ function formatAnalysisResponse(
         .string()
         .optional()
         .describe("Contexto adicional para enriquecer a analise."),
+      auto_fix: z
+        .boolean()
+        .optional()
+        .describe("Se true, aplica a refatoracao sugerida diretamente no arquivo."),
     },
   },
   async (args) => {
@@ -165,6 +202,8 @@ function formatAnalysisResponse(
         typeof args.additional_context === "string"
           ? args.additional_context
           : undefined;
+
+      const auto_fix = Boolean(args.auto_fix);
 
       if (!file_path) {
         return {
@@ -180,27 +219,48 @@ function formatAnalysisResponse(
 
       const finalSourceCode = source_code ?? (await readFileContent(file_path));
       const llmModel = llm_model ?? DEFAULT_LLM_MODEL;
+      const customRules = await getCustomRules();
 
       const requestPayload: ArchitectureAnalysisRequest = {
         sourceCode: finalSourceCode,
         filePath: file_path,
         llmModel,
         additionalContext: additional_context,
+        customRules,
+        generateRefactoring: auto_fix,
       };
 
       log("Sending architecture request", {
         file_path,
         llmModel,
+        auto_fix,
         bytes: finalSourceCode.length,
       });
 
       const result = await analyzeArchitecture(requestPayload);
 
+      let successMessage = "";
+      if (auto_fix && result.refactoredCode) {
+        const absolutePath = path.isAbsolute(file_path)
+          ? file_path
+          : path.resolve(process.cwd(), file_path);
+        
+        let codeToWrite = result.refactoredCode;
+        if (codeToWrite.startsWith("```")) {
+          const match = codeToWrite.match(/```[a-z]*\n([\s\S]*?)\n```/);
+          if (match) {
+            codeToWrite = match[1];
+          }
+        }
+        await writeFile(absolutePath, codeToWrite, "utf-8");
+        successMessage = `\n\n[AUTO-FIX] Arquivo sobrescrito com sucesso com o novo código refatorado!`;
+      }
+
       return {
         content: [
           {
             type: "text",
-            text: formatAnalysisResponse(result, file_path),
+            text: formatAnalysisResponse(result, file_path) + successMessage,
           },
         ],
       };

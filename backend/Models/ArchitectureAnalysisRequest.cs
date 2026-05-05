@@ -6,4 +6,6 @@ public sealed class ArchitectureAnalysisRequest
     public required string FilePath { get; init; }
     public required string LlmModel { get; init; }
     public string? AdditionalContext { get; init; }
+    public string[]? CustomRules { get; init; }
+    public bool GenerateRefactoring { get; init; }
 }

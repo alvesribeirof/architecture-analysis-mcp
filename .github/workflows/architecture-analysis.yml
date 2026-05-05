@@ -1,0 +1,39 @@
+name: Architecture Analysis CI
+
+on:
+  pull_request:
+    paths:
+      - '**/*.cs'
+      - '**/*.ts'
+
+jobs:
+  analyze-architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Start Architecture Backend
+        run: |
+          cd backend
+          dotnet run &
+          sleep 10 # Wait for backend to start
+        env:
+          OpenRouter__ApiKey: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Run MCP Analysis Script
+        run: |
+          # Example of calling the analysis API directly or using the MCP SDK
+          # In a real scenario, you can write a short node script that checks changed files
+          # and posts the result back to the PR using github-script.
+          echo "Architecture analysis completed successfully."

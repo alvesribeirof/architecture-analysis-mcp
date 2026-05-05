@@ -7,5 +7,7 @@ public sealed class ArchitectureAnalysisResponse
     public required List<string> Suggestions { get; init; }
     public required List<string> Patterns { get; init; }
     public double Confidence { get; init; }
+    public string? RefactoredCode { get; init; }
+    public string? ArchitectureDiagram { get; init; }
     public Dictionary<string, object>? Metadata { get; init; }
 }

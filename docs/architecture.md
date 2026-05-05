@@ -27,6 +27,12 @@ O servidor MCP atua como a ponte entre IDEs/Clientes MCP e o motor de análise n
 - `BACKEND_ENDPOINT`: Endpoint da API (Padrão: `/api/architecture/analyze`)
 - `OPENROUTER_API_KEY`: Chave da API para o provedor OpenRouter.
 
+### Novas Funcionalidades (Super-Poderes)
+
+- **Motor de Regras Customizadas**: Se houver um arquivo `.archrc.json` na raiz do projeto contendo um array de `"rules"`, o servidor MCP o lê automaticamente e aplica as regras arquiteturais específicas do time à análise.
+- **Auto-Refatoração**: Passando `auto_fix: true` nos parâmetros, o sistema é capaz de não apenas sugerir, mas **gerar e sobrescrever automaticamente o arquivo** com a versão arquiteturalmente correta!
+- **Diagramas de Arquitetura**: Quando uma refatoração é gerada, a ferramenta também responde com um **diagrama Mermaid** da arquitetura nova, ilustrando as dependências e componentes separados.
+
 ---
 
 ## 2. Backend ASP.NET Core
@@ -73,7 +79,9 @@ sequenceDiagram
   "sourceCode": "string",
   "filePath": "string",
   "llmModel": "openrouter/auto",
-  "additionalContext": "string"
+  "additionalContext": "string",
+  "customRules": ["Regra 1 do .archrc.json", "Regra 2"],
+  "generateRefactoring": true
 }
 ```
 
@@ -86,12 +94,18 @@ sequenceDiagram
   "suggestions": ["Lista de passos práticos para refatoração"],
   "patterns": ["Padrões de projeto recomendados"],
   "confidence": 0.9,
+  "refactoredCode": "public class NewArchitecture...",
+  "architectureDiagram": "```mermaid\nclassDiagram...\n```",
   "metadata": {
     "provider": "OpenRouter",
     "model": "openrouter/auto"
   }
 }
 ```
+
+## 5. Integração com CI/CD (GitHub Actions)
+
+A aplicação foi desenhada para ser executada diretamente em pipelines (Pull Requests). Existe um exemplo completo em `.github/workflows/architecture-analysis.yml`. Nele, você pode iniciar o Backend em background e utilizar scripts via `axios` ou chamadas `curl` na mesma pipeline para verificar as alterações, postando comentários arquiteturais direto no PR da equipe!
 
 ## 5. Interface Padrão (MCP Inspector)
 

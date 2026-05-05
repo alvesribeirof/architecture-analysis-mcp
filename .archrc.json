@@ -1,0 +1,8 @@
+{
+  "rules": [
+    "Controllers não devem acessar o banco de dados diretamente. Use Repositories ou Services.",
+    "O código deve priorizar a Injeção de Dependência via construtor.",
+    "Utilize a Clean Architecture sempre que possível. Camadas de domínio não devem conhecer dependências de infraestrutura.",
+    "Mantenha classes focadas em uma única responsabilidade (SRP)."
+  ]
+}
