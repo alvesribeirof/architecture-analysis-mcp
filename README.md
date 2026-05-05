@@ -35,8 +35,14 @@ O backend atua como ponte agnóstica para o OpenRouter. O modelo é escolhido pe
 
 Entre na pasta do backend e crie um arquivo `.env` baseado no exemplo:
 
+**PowerShell (Windows):**
 ```powershell
-Copy-Item .\backend\.env.example .\backend\.env
+Copy-Item backend\.env.example backend\.env
+```
+
+**Bash (Linux/macOS):**
+```bash
+cp backend/.env.example backend/.env
 ```
 
 Edite o arquivo `.env` e informe sua chave do OpenRouter:
@@ -56,6 +62,15 @@ Instale as dependências do servidor MCP:
 ```powershell
 cd .\mcp-server
 npm install
+```
+
+Opcionalmente, crie um arquivo `.env` em `mcp-server/` para sobrescrever as configurações padrão:
+
+```env
+BACKEND_URL=http://localhost:5000
+BACKEND_ENDPOINT=/api/architecture/analyze
+DEFAULT_LLM_MODEL=openai/gpt-4o-mini
+DEBUG=false
 ```
 
 ## Como executar
@@ -79,6 +94,12 @@ npm run build
 npm run dev
 ```
 
+Para desenvolvimento com **recarga automática** ao salvar arquivos:
+
+```powershell
+npm run dev:watch
+```
+
 Se preferir usar o build compilado:
 
 ```powershell
@@ -91,10 +112,11 @@ A ferramenta exposta é `check_my_architecture`.
 
 Parâmetros principais:
 
-- `file_path`: caminho do arquivo local a ser analisado.
+- `file_path`: caminho do arquivo local a ser analisado (absoluto ou relativo).
 - `source_code`: opcional, caso você queira enviar o código direto sem ler do disco.
-- `llm_model`: modelo do OpenRouter a ser usado na análise.
-- `additional_context`: contexto adicional sobre o código.
+- `llm_model`: modelo do OpenRouter a ser usado na análise. Se omitido, usa o valor de `DEFAULT_LLM_MODEL` (padrão: `openai/gpt-4o-mini`).
+- `additional_context`: contexto adicional para enriquecer a análise.
+- `auto_fix`: quando `true`, o sistema gera o código refatorado e **sobrescreve automaticamente o arquivo** com a versão corrigida. Use com atenção — a operação não tem desfazer.
 
 ### Exemplo de uso
 
@@ -104,7 +126,18 @@ Se você estiver integrando o MCP ao VS Code ou a outro cliente MCP, chame a fer
 {
   "file_path": "src/OrderService.cs",
   "llm_model": "openrouter/auto",
-  "additional_context": "Quero focar em SRP e possíveis melhorias de desacoplamento"
+  "additional_context": "Quero focar em SRP e possíveis melhorias de desacoplamento",
+  "auto_fix": false
+}
+```
+
+Para acionar a refatoração automática com sobrescrita do arquivo:
+
+```json
+{
+  "file_path": "src/OrderService.cs",
+  "llm_model": "openrouter/auto",
+  "auto_fix": true
 }
 ```
 
@@ -125,6 +158,16 @@ Exemplo de payload:
 }
 ```
 
+### Health check
+
+`GET http://localhost:5000/health` retorna `{"status":"ok"}` quando o backend está no ar.
+
+### OpenAPI (Swagger)
+
+Em modo Development (`ASPNETCORE_ENVIRONMENT=Development`), o backend expõe a especificação OpenAPI em:
+
+`GET http://localhost:5000/openapi/v1.json`
+
 ## Resultado esperado
 
 A resposta retorna algo neste formato:
@@ -136,9 +179,12 @@ A resposta retorna algo neste formato:
   "suggestions": [],
   "patterns": [],
   "confidence": 0.95,
+  "refactoredCode": null,
+  "architectureDiagram": null,
   "metadata": {
     "provider": "OpenRouter",
-    "model": "openrouter/auto"
+    "model": "openrouter/auto",
+    "generatedAtUtc": "2025-01-01T00:00:00.0000000Z"
   }
 }
 ```

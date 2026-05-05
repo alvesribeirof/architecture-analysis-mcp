@@ -23,8 +23,10 @@ O servidor MCP atua como a ponte entre IDEs/Clientes MCP e o motor de análise n
 
 ### Variáveis de Ambiente
 - `MCP_SERVER_PORT`: Porta onde o servidor vai rodar (Padrão: 3000)
-- `BACKEND_URL`: URL do backend ASP.NET (Padrão: http://localhost:5000)
+- `BACKEND_URL`: URL do backend ASP.NET (Padrão: `http://localhost:5000`)
 - `BACKEND_ENDPOINT`: Endpoint da API (Padrão: `/api/architecture/analyze`)
+- `DEFAULT_LLM_MODEL`: Modelo padrão do OpenRouter quando `llm_model` não é informado na chamada (Padrão: `openai/gpt-4o-mini`)
+- `DEBUG`: Quando `true`, habilita logs detalhados via `stderr` (Padrão: `false`)
 - `OPENROUTER_API_KEY`: Chave da API para o provedor OpenRouter.
 
 ### Novas Funcionalidades (Super-Poderes)
@@ -47,12 +49,20 @@ O backend é responsável por receber o payload e se comunicar diretamente com a
 
 ### Variáveis de Ambiente
 - `OpenRouter__ApiKey`: A chave da API do OpenRouter.
-- `OpenRouter__Referer`: Identificador de referer para o OpenRouter.
-- `ASPNETCORE_URLS`: URL para vincular o servidor (Padrão: http://localhost:5000)
+- `OpenRouter__Referer`: Identificador de referer para o OpenRouter (Padrão: `http://localhost`).
+- `OpenRouter__Title`: Título enviado no header `X-Title` para o OpenRouter (Padrão: `Architecture Analysis MCP Backend`).
+- `ASPNETCORE_URLS`: URL para vincular o servidor (Padrão: `http://localhost:5000`)
+- `ASPNETCORE_ENVIRONMENT`: Ambiente de execução. Em `Development`, expõe o endpoint OpenAPI em `GET /openapi/v1.json`.
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/api/architecture/analyze` | Analisa o código enviado e retorna o resultado estruturado. |
+| `GET`  | `/health` | Verifica se o backend está no ar. Retorna `{"status":"ok"}`. |
+| `GET`  | `/openapi/v1.json` | Especificação OpenAPI (disponível apenas em `Development`). |
 
 ---
-
-## 3. Fluxo de Comunicação
 
 ```mermaid
 sequenceDiagram
@@ -98,7 +108,8 @@ sequenceDiagram
   "architectureDiagram": "```mermaid\nclassDiagram...\n```",
   "metadata": {
     "provider": "OpenRouter",
-    "model": "openrouter/auto"
+    "model": "openrouter/auto",
+    "generatedAtUtc": "2025-01-01T00:00:00.0000000Z"
   }
 }
 ```
