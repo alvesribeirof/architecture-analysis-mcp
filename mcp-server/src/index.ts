@@ -3,6 +3,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import axios from "axios";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -34,7 +35,10 @@ const BACKEND_ENDPOINT =
   process.env.BACKEND_ENDPOINT || "/api/architecture/analyze";
 const DEFAULT_LLM_MODEL =
   process.env.DEFAULT_LLM_MODEL || "openai/gpt-4o-mini";
+const BACKEND_API_KEY = process.env.BACKEND_API_KEY;
 const DEBUG = process.env.DEBUG === "true";
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const WORKSPACE_ROOT = path.resolve(MODULE_DIR, "..", "..");
 
 const AGENT_SYSTEM_INSTRUCTIONS =
   "Use a ferramenta check_my_architecture para obter diagnostico arquitetural. " +
@@ -58,10 +62,28 @@ function log(message: string, data?: unknown): void {
 }
 
 async function readFileContent(filePath: string): Promise<string> {
-  const absolutePath = path.isAbsolute(filePath)
-    ? filePath
-    : path.resolve(process.cwd(), filePath);
+  const absolutePath = resolveWorkspacePath(filePath);
+
   return readFile(absolutePath, "utf-8");
+}
+
+function resolveWorkspacePath(filePath: string): string {
+  const absolutePath = path.isAbsolute(filePath)
+    ? path.normalize(filePath)
+    : path.normalize(path.resolve(WORKSPACE_ROOT, filePath));
+
+  const relativePath = path.relative(WORKSPACE_ROOT, absolutePath);
+  const isInsideWorkspace =
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+
+  if (!isInsideWorkspace) {
+    throw new Error(
+      `Access denied: '${filePath}' está fora da raiz permitida do workspace.`
+    );
+  }
+
+  return absolutePath;
 }
 
 async function getCustomRules(): Promise<string[] | undefined> {
@@ -86,13 +108,15 @@ async function analyzeArchitecture(
 ): Promise<ArchitectureAnalysisResponse> {
   const backendFullUrl = `${BACKEND_URL}${BACKEND_ENDPOINT}`;
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (BACKEND_API_KEY) {
+    headers["X-Api-Key"] = BACKEND_API_KEY;
+  }
+
   const response = await axios.post<ArchitectureAnalysisResponse>(
     backendFullUrl,
     payload,
-    {
-      headers: { "Content-Type": "application/json" },
-      timeout: 30000,
-    }
+    { headers, timeout: 30000 }
   );
 
   return response.data;
@@ -172,7 +196,8 @@ function formatAnalysisResponse(
     inputSchema: {
       file_path: z
         .string()
-        .describe("Caminho do arquivo local para analise (absoluto ou relativo)."),
+        .optional()
+        .describe("Caminho do arquivo local para analise (absoluto ou relativo). Obrigatório se source_code não for informado."),
       source_code: z
         .string()
         .optional()
@@ -205,19 +230,20 @@ function formatAnalysisResponse(
 
       const auto_fix = Boolean(args.auto_fix);
 
-      if (!file_path) {
+      if (!file_path && !source_code) {
         return {
           content: [
             {
               type: "text",
-              text: "Architecture analysis failed: file_path is required.",
+              text: "Architecture analysis failed: informe ao menos 'file_path' (caminho do arquivo) ou 'source_code' (código-fonte direto).",
             },
           ],
           isError: true,
         };
       }
 
-      const finalSourceCode = source_code ?? (await readFileContent(file_path));
+      const finalSourceCode = source_code ?? (await readFileContent(file_path!));
+      const displayPath = file_path ?? "<source_code>";
       const llmModel = llm_model ?? DEFAULT_LLM_MODEL;
       const customRules = await getCustomRules();
 
@@ -240,11 +266,11 @@ function formatAnalysisResponse(
       const result = await analyzeArchitecture(requestPayload);
 
       let successMessage = "";
-      if (auto_fix && result.refactoredCode) {
-        const absolutePath = path.isAbsolute(file_path)
-          ? file_path
-          : path.resolve(process.cwd(), file_path);
-        
+      if (auto_fix && !file_path) {
+        successMessage = "\n\n[AUTO-FIX] Ignorado: 'auto_fix' requer 'file_path' para sobrescrever o arquivo.";
+      } else if (auto_fix && result.refactoredCode) {
+        const absolutePath = resolveWorkspacePath(file_path!);
+
         let codeToWrite = result.refactoredCode;
         if (codeToWrite.startsWith("```")) {
           const match = codeToWrite.match(/```[a-z]*\n([\s\S]*?)\n```/);
@@ -260,7 +286,7 @@ function formatAnalysisResponse(
         content: [
           {
             type: "text",
-            text: formatAnalysisResponse(result, file_path) + successMessage,
+            text: formatAnalysisResponse(result, displayPath) + successMessage,
           },
         ],
       };

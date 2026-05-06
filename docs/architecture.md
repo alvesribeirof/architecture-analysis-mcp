@@ -18,20 +18,37 @@ O servidor MCP atua como a ponte entre IDEs/Clientes MCP e o motor de análise n
 - **Ferramenta Exposta**: `check_my_architecture`
 - **Responsabilidades**: 
   - Recebe as requisições de análise do cliente MCP.
-  - Lê o conteúdo do arquivo no disco local (se o caminho for fornecido).
+  - Lê o conteúdo do arquivo no disco local se `file_path` for fornecido e `source_code` não.
+  - Valida que ao menos `file_path` ou `source_code` foi informado (erro claro caso ambos estejam ausentes).
   - Encaminha o payload (código-fonte, caminho do arquivo, modelo LLM e contexto) para o Backend ASP.NET Core.
 
 ### Variáveis de Ambiente
 - `BACKEND_URL`: URL do backend ASP.NET (Padrão: `http://localhost:5000`)
 - `BACKEND_ENDPOINT`: Endpoint da API (Padrão: `/api/architecture/analyze`)
 - `DEFAULT_LLM_MODEL`: Modelo padrão do OpenRouter quando `llm_model` não é informado na chamada (Padrão: `openai/gpt-4o-mini`)
+- `BACKEND_API_KEY`: Chave opcional enviada no header `X-Api-Key` para o backend quando `API_KEY` estiver configurada
 - `DEBUG`: Quando `true`, habilita logs detalhados via `stderr` (Padrão: `false`)
+
+### Ambientes de Execução
+
+#### Desenvolvimento local
+
+Use `dotnet run` no diretório `backend/` e `npm run build` seguido de `npm start` no diretório `mcp-server/`. Nesse cenário, o backend pode operar sem `API_KEY` e com `AllowedOrigins` apontando para localhost.
+
+#### Teste / homologação
+
+Em teste, mantenha `API_KEY` habilitada para validar o fluxo autenticado, aponte `BACKEND_URL` para o ambiente de teste e mantenha `DEBUG=false`.
+
+#### Produção
+
+Em produção, mantenha `API_KEY` e `BACKEND_API_KEY` configuradas, restrinja `AllowedOrigins` ao front real e prefira publicar o backend atrás de proxy reverso ou gateway que preserve o header `X-Api-Key`.
 
 ### Novas Funcionalidades (Super-Poderes)
 
 - **Motor de Regras Customizadas**: Se houver um arquivo `.archrc.json` na raiz do projeto contendo um array de `"rules"`, o servidor MCP o lê automaticamente e aplica as regras arquiteturais específicas do time à análise.
-- **Auto-Refatoração**: Passando `auto_fix: true` nos parâmetros, o sistema é capaz de não apenas sugerir, mas **gerar e sobrescrever automaticamente o arquivo** com a versão arquiteturalmente correta!
+- **Auto-Refatoração**: Passando `auto_fix: true` nos parâmetros junto com `file_path`, o sistema é capaz de não apenas sugerir, mas **gerar e sobrescrever automaticamente o arquivo** com a versão arquiteturalmente correta. Requer `file_path` — se apenas `source_code` for informado, o `auto_fix` é ignorado com aviso.
 - **Diagramas de Arquitetura**: Quando uma refatoração é gerada, a ferramenta também responde com um **diagrama Mermaid** da arquitetura nova, ilustrando as dependências e componentes separados.
+
 
 ---
 
@@ -51,6 +68,8 @@ O backend é responsável por receber o payload e se comunicar diretamente com a
 - `OpenRouter__Title`: Título enviado no header `X-Title` para o OpenRouter (Padrão: `Architecture Analysis MCP Backend`).
 - `ASPNETCORE_URLS`: URL para vincular o servidor (Padrão: `http://localhost:5000`)
 - `ASPNETCORE_ENVIRONMENT`: Ambiente de execução. Em `Development`, expõe o endpoint OpenAPI em `GET /openapi/v1.json`.
+- `AllowedOrigins`: Lista de origens permitidas para CORS, separadas por vírgula.
+- `API_KEY`: Chave opcional para proteger o backend via header `X-Api-Key`.
 
 ### Endpoints
 
@@ -105,13 +124,15 @@ Exemplo:
 ```json
 {
   "sourceCode": "string",
-  "filePath": "string",
+  "filePath": "string | null",
   "llmModel": "openrouter/auto",
   "additionalContext": "string",
   "customRules": ["Regra 1 do .archrc.json", "Regra 2"],
   "generateRefactoring": true
 }
 ```
+
+> **`filePath`** é enviado como `"<source_code>"` quando apenas `source_code` é fornecido (sem arquivo em disco).
 
 ### Resposta Esperada do Backend
 

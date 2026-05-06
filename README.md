@@ -29,6 +29,59 @@ O backend atua como ponte agnóstica para o OpenRouter. O modelo é escolhido pe
 - Uma API Key do OpenRouter.
 - VS Code com suporte a MCP, se for integrar o servidor ao editor.
 
+## Segurança
+
+### MCP Inspector
+
+Se o MCP Inspector solicitar um token local de sessão ou acesso, isso faz parte da própria interface web do Inspector e não é uma credencial da aplicação. Não reutilize esse valor em produção.
+
+### Produção
+
+Para expor o backend fora da máquina local, configure `API_KEY` e use o mesmo valor em `BACKEND_API_KEY` no MCP server. Mantenha `AllowedOrigins` restrito, deixe `DEBUG=false` e publique o backend atrás de um proxy confiável.
+
+## Ambientes
+
+### Desenvolvimento local
+
+Use este modo quando estiver iterando no código na sua máquina.
+
+Backend:
+```powershell
+cd .\backend
+dotnet run
+```
+
+MCP Server:
+```powershell
+cd .\mcp-server
+npm run build
+npm start
+```
+
+Nesse cenário, `API_KEY` pode ficar vazio e `AllowedOrigins` pode manter os padrões de localhost.
+
+### Teste / homologação
+
+Use este modo quando quiser validar o fluxo em um ambiente controlado antes de promover para produção.
+
+Backend:
+```env
+ASPNETCORE_ENVIRONMENT=Staging
+AllowedOrigins=https://seu-front-teste.com
+API_KEY=uma_chave_teste
+```
+
+MCP Server:
+```env
+BACKEND_URL=https://seu-backend-teste.com
+BACKEND_API_KEY=uma_chave_teste
+DEBUG=false
+```
+
+### Produção
+
+Em produção, mantenha `API_KEY` configurada, `AllowedOrigins` restrito ao front real e `DEBUG=false`. Se o backend estiver atrás de proxy ou gateway, preserve o header `X-Api-Key` até a aplicação.
+
 ## Instalação
 
 ### 1. Backend ASP.NET Core
@@ -53,7 +106,11 @@ OpenRouter__Referer=http://localhost
 OpenRouter__Title=Architecture Analysis MCP Backend
 ASPNETCORE_URLS=http://localhost:5000
 ASPNETCORE_ENVIRONMENT=Development
+AllowedOrigins=http://localhost:5173,http://localhost:6274,http://localhost:3000
+API_KEY=
 ```
+
+Se quiser simular teste/homologação localmente, troque `ASPNETCORE_ENVIRONMENT` para `Staging`, ajuste `AllowedOrigins` para a origem real e defina `API_KEY` com um valor de teste.
 
 ### 2. MCP Server
 
@@ -70,8 +127,11 @@ Opcionalmente, crie um arquivo `.env` em `mcp-server/` para sobrescrever as conf
 BACKEND_URL=http://localhost:5000
 BACKEND_ENDPOINT=/api/architecture/analyze
 DEFAULT_LLM_MODEL=openai/gpt-4o-mini
+BACKEND_API_KEY=
 DEBUG=false
 ```
+
+Em teste ou produção, aponte `BACKEND_URL` para o ambiente desejado e, se o backend estiver protegido, configure o mesmo valor em `BACKEND_API_KEY`.
 
 ## Como executar
 
@@ -86,13 +146,21 @@ O backend sobe em `http://localhost:5000`.
 
 ### MCP Server
 
-Em outro terminal:
+Em outro terminal, compile e inicie o servidor:
 
 ```powershell
 cd .\mcp-server
 npm run build
-npm run dev
+npm start
 ```
+
+> **⚠️ Comportamento esperado:** O servidor MCP usa transporte **stdio** e não imprime nada visível no terminal durante a execução normal — isso é correto. Toda a comunicação acontece via stdin/stdout, reservado para o protocolo MCP. Logs de debug são emitidos via `stderr` e só aparecem se `DEBUG=true` estiver no `.env`.
+
+> **ℹ️ PowerShell e stderr:** O PowerShell pode exibir um `NativeCommandError` ou exit code 1 ao capturar a saída stderr do servidor. Isso é um **falso positivo** do PowerShell — o servidor está funcionando normalmente. Para confirmar, ative o debug:
+> ```powershell
+> $env:DEBUG="true"; node dist/index.js
+> # Deve exibir: [architecture-analysis-mcp] MCP server ready { backend: '...' }
+> ```
 
 Para desenvolvimento com **recarga automática** ao salvar arquivos:
 
@@ -100,22 +168,18 @@ Para desenvolvimento com **recarga automática** ao salvar arquivos:
 npm run dev:watch
 ```
 
-Se preferir usar o build compilado:
-
-```powershell
-npm start
-```
+> **Nota:** `npm run dev` usa `ts-node` diretamente (sem compilar) e emite avisos de deprecação no Node.js moderno — prefira `npm start` (com build) para execução estável.
 
 ### Usando o MCP Inspector (interface web)
 
 Para interagir com o servidor via interface web sem precisar de uma IDE compatível:
 
 ```powershell
+# Produção (build compilado) — recomendado
+npm run start:inspector
+
 # Desenvolvimento (ts-node)
 npm run dev:inspector
-
-# Produção (build compilado)
-npm run start:inspector
 ```
 
 Após executar, acesse o link gerado no terminal (geralmente `http://localhost:5173` ou `http://localhost:6274`) para abrir o MCP Inspector.
@@ -142,15 +206,16 @@ A ferramenta exposta é `check_my_architecture`.
 
 Parâmetros principais:
 
-- `file_path`: caminho do arquivo local a ser analisado (absoluto ou relativo).
-- `source_code`: opcional, caso você queira enviar o código direto sem ler do disco.
+- `file_path`: caminho do arquivo local a ser analisado (absoluto ou relativo). **Obrigatório se `source_code` não for informado.**
+- `source_code`: código-fonte enviado diretamente, sem precisar de um arquivo em disco. **Obrigatório se `file_path` não for informado.**
+
+> **Regra:** informe ao menos um dos dois. Se ambos forem fornecidos, `source_code` tem preferência e o arquivo não é lido do disco (mas `file_path` ainda é usado como nome de referência no relatório e pelo `auto_fix`).
+
 - `llm_model`: modelo do OpenRouter a ser usado na análise. Se omitido, usa o valor de `DEFAULT_LLM_MODEL` (padrão: `openai/gpt-4o-mini`).
 - `additional_context`: contexto adicional para enriquecer a análise.
-- `auto_fix`: quando `true`, o sistema gera o código refatorado e **sobrescreve automaticamente o arquivo** com a versão corrigida. Use com atenção — a operação não tem desfazer.
+- `auto_fix`: quando `true`, o sistema gera o código refatorado e **sobrescreve automaticamente o arquivo** com a versão corrigida. Requer `file_path`. Use com atenção — a operação não tem desfazer.
 
-### Exemplo de uso
-
-Se você estiver integrando o MCP ao VS Code ou a outro cliente MCP, chame a ferramenta assim:
+### Exemplo 1 — analisar um arquivo no disco
 
 ```json
 {
@@ -160,6 +225,18 @@ Se você estiver integrando o MCP ao VS Code ou a outro cliente MCP, chame a fer
   "auto_fix": false
 }
 ```
+
+### Exemplo 2 — enviar o código diretamente (sem arquivo em disco)
+
+```json
+{
+  "source_code": "public class OrderService { public void Process() { /* ... */ } }",
+  "llm_model": "openrouter/auto",
+  "additional_context": "Código colado direto no MCP Inspector"
+}
+```
+
+> `auto_fix` não tem efeito quando somente `source_code` é informado (não há arquivo para sobrescrever).
 
 Para acionar a refatoração automática com sobrescrita do arquivo:
 

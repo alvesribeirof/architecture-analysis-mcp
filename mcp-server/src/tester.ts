@@ -1,6 +1,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
+interface TextContent {
+  type: "text";
+  text: string;
+}
+
 async function run() {
   console.log("Iniciando MCP Client...");
   const transport = new StdioClientTransport({
@@ -26,8 +31,9 @@ async function run() {
   });
 
   console.log("\n================ RESULTADO DA ANÁLISE ================\n");
-  const textContent = result.content[0];
-  if ('text' in textContent) {
+  const contents = result.content as TextContent[];
+  const textContent = contents[0];
+  if (textContent && textContent.type === "text") {
     console.log(textContent.text);
   }
   console.log("\n======================================================\n");
